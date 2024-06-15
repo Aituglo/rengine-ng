@@ -12,22 +12,12 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT}
     volumes:
       - postgres_data:/var/lib/postgresql/data/
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - rengine_network
 
   redis:
     image: "redis:alpine"
     hostname: redis
-    healthcheck:
-      test: ["CMD", "redis-cli","ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - rengine_network
 
@@ -57,16 +47,9 @@ services:
       - POSTGRES_HOST=${POSTGRES_HOST}
       - MAX_CONCURRENCY=${MAX_CONCURRENCY}
       - MIN_CONCURRENCY=${MIN_CONCURRENCY}
-    healthcheck:
-      test: ["CMD", "celery","-A","reNgine","status"]
-      interval: 10s
-      timeout: 10s
-      retries: 60
     depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - db
+      - redis
     networks:
       - rengine_network
 
@@ -83,8 +66,7 @@ services:
       - POSTGRES_PORT=${POSTGRES_PORT}
       - POSTGRES_HOST=${POSTGRES_HOST}
     depends_on:
-      celery:
-        condition: service_healthy
+      - celery
     volumes:
       - ./web:/usr/src/app
       - github_repos:/usr/src/github
@@ -123,20 +105,12 @@ services:
       - nuclei_templates:/root/nuclei-templates
       - tool_config:/root/.config
       - static_volume:/usr/src/app/staticfiles/
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "-k", "http://localhost:8000"]
-      interval: 10s
-      timeout: 10s
-      retries: 10
+    expose:
+      - "8000"
     depends_on:
-      db:
-        condition: service_healthy
-      celery:
-        condition: service_healthy
-      celery-beat:
-        condition: service_started
+      - db
+      - celery
+      - celery-beat
     networks:
       rengine_network:
         aliases:
@@ -146,22 +120,11 @@ services:
     restart: always
     image: nginx:alpine
     ports:
-      - 8082:8082/tcp
-      - 443:443/tcp
+      - 127.0.0.1:80:80/tcp
     depends_on:
-      web:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    secrets:
-      - source: proxy.ca
-        target: /etc/nginx/certs/rengine_chain.pem
-      - source: proxy.cert
-        target: /etc/nginx/certs/rengine.pem
-      - source: proxy.key
-        target: /etc/nginx/certs/rengine_rsa.key
+      - web
+      - db
+      - redis
     volumes:
       - ./config/nginx/rengine.conf:/etc/nginx/conf.d/rengine.conf:ro
       - static_volume:/usr/src/app/staticfiles/
@@ -183,10 +146,3 @@ volumes:
   scan_results:
   static_volume:
 
-secrets:
-  proxy.ca:
-    file: ./secrets/certs/rengine_chain.pem
-  proxy.key:
-    file: ./secrets/certs/rengine_rsa.key
-  proxy.cert:
-    file: ./secrets/certs/rengine.pem
